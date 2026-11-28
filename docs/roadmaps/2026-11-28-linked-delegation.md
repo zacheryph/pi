@@ -31,6 +31,10 @@ findings, blockers and outcomes.
   to the next.
 - A review or repair agent for the same task lands in the same worktree by
   naming the same branch.
+- The model never names a workspace. Each main session's worktrees live under
+  one directory, grouped by branch: an agent working across several
+  repositories on one branch gets a `cwd` that holds those repositories and
+  nothing else.
 - Every task row shows the task's agent, worktree and pull request with their
   current state, in the TUI and in every `pi-surface` renderer, and the hidden
   todo note after compaction carries the same links.
@@ -82,42 +86,62 @@ smallest change).
   reaches the parent's ledger.
 - After a compaction pi-todo sends a hidden note with the whole list
   (`extensions/pi-todo/src/index.ts:884`).
+- Worktrees live at `<worktreeRoot>/<repo>/<branch>`, or
+  `<worktreeRoot>/<workspace>/<repo>` when the model names a workspace
+  (`extensions/pi-git/src/worktrees.ts:61`).
+- The session tree knows every session's main (root) session
+  (`packages/pi-session-tree/src/index.ts:208`).
+- Pi loads `AGENTS.md`/`CLAUDE.md` from a session's `cwd` and its ancestors
+  only, never from directories below it
+  (`@earendil-works/pi-coding-agent` `core/resource-loader.js:184`).
 
 ## Answers
 
-| #   | Question                                                          | Recommended   | Answer                                          | Source                                            | Status   |
-| --- | ----------------------------------------------------------------- | ------------- | ----------------------------------------------- | ------------------------------------------------- | -------- |
-| 1   | Can an extension change a tool call's arguments before it runs?   | —             | Yes: mutate `event.input` in a `tool_call` hook | `pi-coding-agent` `extensions/types.d.ts:1110`    | resolved |
-| 2   | Does anything join a pull request to the worktree it came from?   | —             | No; both sides hold the branch                  | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27` | resolved |
-| 3   | Is task → agent kept after the agent ends?                        | —             | Only in memory and in claim journal ops         | `pi-todo/src/delegation.ts:247`                   | resolved |
-| 4   | Retire merged worktrees by default, or behind an opt-in setting?  | Default on    | Default on                                      | user                                              | resolved |
-| 5   | Retire a merged worktree while a kept (resumable) agent is in it? | Yes, if clean | Wait for no running agent                       | user                                              | resolved |
+| #   | Question                                                                                                          | Recommended                                                   | Answer                                          | Source                                            | Status   |
+| --- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- | -------- |
+| 1   | Can an extension change a tool call's arguments before it runs?                                                   | —                                                             | Yes: mutate `event.input` in a `tool_call` hook | `pi-coding-agent` `extensions/types.d.ts:1110`    | resolved |
+| 2   | Does anything join a pull request to the worktree it came from?                                                   | —                                                             | No; both sides hold the branch                  | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27` | resolved |
+| 3   | Is task → agent kept after the agent ends?                                                                        | —                                                             | Only in memory and in claim journal ops         | `pi-todo/src/delegation.ts:247`                   | resolved |
+| 4   | Retire merged worktrees by default, or behind an opt-in setting?                                                  | Default on                                                    | Default on                                      | user                                              | resolved |
+| 5   | Retire a merged worktree while a kept (resumable) agent is in it?                                                 | Yes, if clean                                                 | Wait for no running agent                       | user                                              | resolved |
+| 6   | Replace `workspace` with one directory per main session, and give a multi-worktree agent that directory as `cwd`? | Per session, grouped by branch: `cwd` is the branch directory | Go with grouping by branch                      | user                                              | resolved |
 
 ## Inputs
 
-| Input                                         | Consumer                                   | Today's source                                                                                | Producer / owner    | Problem                                             | Recommended supply                                                                                    |
-| --------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Worktree spec (repo, branch, base, workspace) | pi-git, at spawn                           | Caller passes it to `git_worktree_create` in a turn of its own                                | Orchestrating model | An extra round trip; the result is copied by hand   | Caller passes it as `handoff.worktree` on `subagent_start` (rung 2, on the existing handoff contract) |
-| The child's `cwd`                             | pi-subagent                                | Copied from `git_worktree_create`'s result (`agent-tool.ts:83`)                               | pi-git              | Paths travel through prose                          | pi-git sets `event.input.cwd` in its `tool_call` hook                                                 |
-| The worktree a branch already has             | pi-git, for review and repair agents       | The model passes the same `cwd` again                                                         | pi-git ledger       | The model must remember the path                    | pi-git reuses the live record for the same repository and branch                                      |
-| Task → agent                                  | pi-todo rows and links                     | Claims (`delegation.ts:396`), dropped on release; prose `implementing (agent <id>)`           | pi-todo             | Lost when the agent ends                            | pi-todo keeps every agent that held a task, rebuilt from its claim journal                            |
-| Agent → worktree, worktree → pull request     | pi-todo rows, the restore note, retirement | `record.agents` (`index.ts:549`); no join to pull requests                                    | pi-git              | Visible only in git views; URL copied into messages | pi-git advertises links keyed by agent ID (contract below)                                            |
-| Live state of each link                       | Task rows in `/todo`, bb, dashboard        | Each extension's own view                                                                     | Each producer       | Four places to reconcile                            | Carried on the link, re-advertised when it changes                                                    |
-| Merge signal                                  | Worktree retirement                        | `git_pr_watch` reports `Merged.` (`watch.ts:211`); the model then calls `git_worktree_remove` | pi-git              | Forgotten at the end of long runs                   | pi-git acts on its own merged observation                                                             |
+| Input                                     | Consumer                                   | Today's source                                                                                | Producer / owner    | Problem                                             | Recommended supply                                                                                    |
+| ----------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Worktree spec (branch, repos, base)       | pi-git, at spawn                           | Caller passes it to `git_worktree_create` in a turn of its own                                | Orchestrating model | An extra round trip; the result is copied by hand   | Caller passes it as `handoff.worktree` on `subagent_start` (rung 2, on the existing handoff contract) |
+| The child's `cwd`                         | pi-subagent                                | Copied from `git_worktree_create`'s result (`agent-tool.ts:83`)                               | pi-git              | Paths travel through prose                          | pi-git sets `event.input.cwd` in its `tool_call` hook                                                 |
+| The worktree a branch already has         | pi-git, for review and repair agents       | The model passes the same `cwd` again                                                         | pi-git ledger       | The model must remember the path                    | pi-git reuses the worktree at the branch's fixed path                                                 |
+| Where a session's worktrees live          | pi-git, the agent's `cwd`                  | A `workspace` name the model invents and repeats on each create (`worktrees.ts:61`)           | Orchestrating model | Naming chores; nothing groups a session's worktrees | Derived: `<worktreeRoot>/<main session>/<branch>/<repo>`                                              |
+| Task → agent                              | pi-todo rows and links                     | Claims (`delegation.ts:396`), dropped on release; prose `implementing (agent <id>)`           | pi-todo             | Lost when the agent ends                            | pi-todo keeps every agent that held a task, rebuilt from its claim journal                            |
+| Agent → worktree, worktree → pull request | pi-todo rows, the restore note, retirement | `record.agents` (`index.ts:549`); no join to pull requests                                    | pi-git              | Visible only in git views; URL copied into messages | pi-git advertises links keyed by agent ID (contract below)                                            |
+| Live state of each link                   | Task rows in `/todo`, bb, dashboard        | Each extension's own view                                                                     | Each producer       | Four places to reconcile                            | Carried on the link, re-advertised when it changes                                                    |
+| Merge signal                              | Worktree retirement                        | `git_pr_watch` reports `Merged.` (`watch.ts:211`); the model then calls `git_worktree_remove` | pi-git              | Forgotten at the end of long runs                   | pi-git acts on its own merged observation                                                             |
 
 **Contract: `handoff.worktree`** (owner pi-git; read in pi-git's `tool_call` hook)
 
-- Shape: `{ branch: string, base?: string, repo?: string, workspace?: string }`,
-  the same fields and meanings as `git_worktree_create`.
-- Meaning: run this agent in that worktree; create it if this session has no
-  live one for that repository and branch, reuse it if it does.
+- Shape: `{ branch: string, repos?: string[], base?: string }` for one branch
+  in one or more repositories (default: the repository you are in), or
+  `{ worktrees: [{ branch, repo?, base? }, …] }` for the rare agent that works
+  on several branches.
+- Layout: every worktree is at `<worktreeRoot>/<main session>/<branch>/<repo>`,
+  where the main session is the session tree's root, so a delegated
+  orchestrator's worktrees sit beside its parent's.
+- Meaning: run this agent in those worktrees; create each that does not exist,
+  reuse each that does. The `cwd` is the worktree for one repository, the
+  branch directory for several (it holds only that branch's repositories), and
+  the main session's directory for several branches, with the worktrees named
+  in the agent's prompt.
+- Binding: pi-git binds the agent to exactly the worktrees the handoff named,
+  not to whatever its `cwd` contains.
 - Conflicts: a `cwd` that is not the provisioned path blocks the call with a
   reason naming both. A failed create blocks the call with the git error.
 - A call blocked later by another extension leaves the worktree in place; the
   next spawn for the branch reuses it, so nothing is orphaned.
 
 **Contract: task links** (owner: a small shared module in `packages/`, home to
-settle in step 4; producers pi-git, later pi-job or others; consumer pi-todo)
+settle in step 5; producers pi-git, later pi-job or others; consumer pi-todo)
 
 - Channel on the session's event bus, versioned payload
   `{ version: 1, agent, kind, id, label, url?, state?, at }`. `agent` is the
@@ -159,17 +183,20 @@ actions through `pi-surface`; the bb plugin's per-view tables follow the
 
 **Friction:**
 
-| Friction                                                                               | Evidence (`file:line`)                                                                 | Blocks                                        | Fix cost | Verdict                                                            |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- | -------- | ------------------------------------------------------------------ |
-| Worktree creation and its ledger append live inside the tool's `execute`               | `pi-git/src/index.ts:876-905`                                                          | Provisioning from a hook                      | S        | Fix first: extract one `provision` used by both                    |
-| Creating a branch that already has a worktree fails instead of reusing it              | `pi-git/src/worktrees.ts:79-94`                                                        | Review and repair agents in the same worktree | S        | Fix first: look up the live ledger record by repository and branch |
-| Pull requests and worktrees are never joined                                           | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27`                                      | PR links, retirement                          | S        | Fix first                                                          |
-| Task → agent is lost when a claim is released                                          | `pi-todo/src/delegation.ts:247`, `:283`                                                | Links for tasks whose agent ended             | S–M      | Fix first: keep holders per task, replayed from claim ops          |
-| No contract for one extension to annotate another's records                            | — (missing seam)                                                                       | Links on task rows                            | M        | Fix first (the contract above)                                     |
-| The skills use task messages as a scratchpad for stage, agent ID, path, branch and URL | `skills/execute-roadmap/SKILL.md` §1–2, §5; `orchestrate.md` "Delegate and coordinate" | The noise the change removes                  | M        | Fix as the change itself                                           |
-| Retirement relies on the model calling `git_worktree_remove`                           | `skills/execute-roadmap/SKILL.md` "After the merge" 1                                  | Retirement                                    | S        | Fix first (pi-git acts on merged)                                  |
-| pi-git does not know whether an agent bound to a worktree is still running             | `pi-git/src/index.ts:549` records ids only                                             | Safe retirement                               | S        | Work around: retire only when `atRisk` is clear; see answer 6      |
-| If pi-todo blocks a spawn after pi-git created its worktree, the worktree stays        | `tool_call` handler order is load order                                                | Clean failure                                 | —        | Work around: reuse by branch makes the next try pick it up         |
+| Friction                                                                               | Evidence (`file:line`)                                                                 | Blocks                                        | Fix cost | Verdict                                                                                                                                       |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Worktree creation and its ledger append live inside the tool's `execute`               | `pi-git/src/index.ts:876-905`                                                          | Provisioning from a hook                      | S        | Fix first: extract one `provision` used by both                                                                                               |
+| Creating a branch that already has a worktree fails instead of reusing it              | `pi-git/src/worktrees.ts:79-94`                                                        | Review and repair agents in the same worktree | S        | Fix first: reuse the worktree at the branch's path                                                                                            |
+| The model invents and repeats a `workspace` name to group repositories                 | `pi-git/src/worktrees.ts:61`, `pi-git/src/index.ts:869`                                | One-call multi-repository spawns              | S        | Fix first: derive the layout from main session and branch                                                                                     |
+| pi-git binds agents by `cwd`, so a `cwd` above several worktrees binds none            | `pi-git/src/index.ts:555-558`                                                          | Links for the several-branch case             | S        | Fix first: bind the worktrees the handoff names                                                                                               |
+| A `cwd` above the repositories loads none of their `AGENTS.md`                         | `pi-coding-agent` `core/resource-loader.js:184`                                        | Repository rules in multi-repository agents   | —        | Work around: one repository gets its worktree as `cwd`; the prompt points a multi-repository agent at each repository's `AGENTS.md`, as today |
+| Pull requests and worktrees are never joined                                           | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27`                                      | PR links, retirement                          | S        | Fix first                                                                                                                                     |
+| Task → agent is lost when a claim is released                                          | `pi-todo/src/delegation.ts:247`, `:283`                                                | Links for tasks whose agent ended             | S–M      | Fix first: keep holders per task, replayed from claim ops                                                                                     |
+| No contract for one extension to annotate another's records                            | — (missing seam)                                                                       | Links on task rows                            | M        | Fix first (the contract above)                                                                                                                |
+| The skills use task messages as a scratchpad for stage, agent ID, path, branch and URL | `skills/execute-roadmap/SKILL.md` §1–2, §5; `orchestrate.md` "Delegate and coordinate" | The noise the change removes                  | M        | Fix as the change itself                                                                                                                      |
+| Retirement relies on the model calling `git_worktree_remove`                           | `skills/execute-roadmap/SKILL.md` "After the merge" 1                                  | Retirement                                    | S        | Fix first (pi-git acts on merged)                                                                                                             |
+| pi-git does not know whether an agent bound to a worktree is still running             | `pi-git/src/index.ts:549` records ids only                                             | Safe retirement                               | S        | Work around: retire only when `atRisk` is clear; see answer 5                                                                                 |
+| If pi-todo blocks a spawn after pi-git created its worktree, the worktree stays        | `tool_call` handler order is load order                                                | Clean failure                                 | —        | Work around: reuse by branch makes the next try pick it up                                                                                    |
 
 **Noticed, not doing:** A delegated orchestrator cannot hand tasks on
 (`pi-todo/src/delegation.ts:370`). `git_worktree_create` could accept a task
@@ -177,7 +204,8 @@ key as its branch by default.
 
 **Not examined:** The bb plugin's todo stack card code, beyond knowing it
 renders pi-todo's surface views (step detail will cover it). pi-job as a second
-link producer.
+link producer. Worktrees made by earlier sessions under the old layout (they
+stay readable and removable; nothing moves them).
 
 ## Options
 
@@ -204,20 +232,21 @@ and the git card.
 agent's work produced (its worktree, its pull request, their state), and
 pi-todo attaches those links to the tasks the agent held, shows them on every
 row and in its restore note. Nobody writes identifiers into messages.
-**Steps:** 1. extract `provision` → 2. reuse by branch → 3. `handoff.worktree`
-→ 4. links contract module → 5. pi-todo keeps task holders → 6. pi-todo stores
-and shows links (TUI, surface views, restore note) → 7. pi-git advertises
-worktree links → 8. join PR to worktree, advertise PR links → 9. retire merged
-worktrees → 10. bb plugin task rows → 11. rewrite orchestrate and the skills.
+**Steps:** 1. extract `provision` → 2. per-session, per-branch layout (added
+after the decision, answer 6) → 3. reuse by branch → 4. `handoff.worktree` → 5.
+links contract module → 6. pi-todo keeps task holders → 7. pi-todo stores and
+shows links (TUI, surface views, restore note) → 8. pi-git advertises worktree
+links → 9. join PR to worktree, advertise PR links → 10. bb plugin task rows → 11. track running agents → 12. retire merged worktrees → 13. rewrite
+orchestrate and the skills → 14. READMEs.
 **What it makes easy:** Every input above. A new producer (pi-job, a deploy
 check) can add a link with no pi-todo change.
 **What it leaves behind:** One small contract to own; links are as current as
 their producer's last announcement.
-**Cost:** M–L, concentrated in pi-todo (steps 5–6).
+**Cost:** M–L, concentrated in pi-todo (steps 6–7).
 **Risk and reversibility:** Medium: a new journal entry type in pi-todo. Each
 step reverts alone; links are additive and render nothing when absent.
-**Value timing:** Step 3 ships the one-call spawn; step 8 puts PR links on rows;
-step 11 removes the ceremony.
+**Value timing:** Step 4 ships the one-call spawn; step 9 puts PR links on rows;
+step 13 removes the ceremony.
 **Choose it when:** You want task rows and the restore note to be the single
 place state lives, and expect more producers.
 
@@ -245,7 +274,7 @@ take back than an additive link entry.
 |                                | A                 | B                | C                       |
 | ------------------------------ | ----------------- | ---------------- | ----------------------- |
 | Effort                         | S–M               | M–L              | M                       |
-| Effort before first value      | Steps 1–3         | Steps 1–3        | Steps 1–3               |
+| Effort before first value      | Steps 1–3         | Steps 1–4        | Steps 1–3               |
 | Removes prose bookkeeping      | Partly (no paths) | Fully            | Mostly                  |
 | Restore after compaction       | Three cards still | One todo note    | One todo note           |
 | Coupling                       | None new          | Agent ID only    | pi-git ↔ pi-todo shapes |
@@ -256,7 +285,7 @@ take back than an additive link entry.
 **Option B.** The goal is that the system, not the model, holds the task →
 agent → worktree → pull request mapping, and the appetite is to leave the area
 better. B is the only option where that mapping lives in one place without
-pi-todo or pi-git learning each other's identifiers, and its first three steps
+pi-todo or pi-git learning each other's identifiers, and its first steps
 are Option A's, so the one-call spawn ships before any contract work.
 Choose A instead if links on rows turn out not to matter once the round trip
 is gone; choose C if model-written refs are a requirement.
@@ -265,11 +294,13 @@ is gone; choose C if model-written refs are a requirement.
 
 **Option B**, chosen by the user on 2026-11-28, as recommended. Retirement is
 on by default behind a setting (answer 4) and waits until no agent bound to the
-worktree is running (answer 5), which adds step 10.
+worktree is running (answer 5), which adds step 11. Later the same day the user
+chose to replace `workspace` with a per-session, per-branch layout (answer 6),
+which adds step 2 and reshapes `handoff.worktree` (step 4).
 
 ## Roadmap
 
-Start with step 1; it is safe to start today. Steps 1–3 ship the one-call
+Start with step 1; it is safe to start today. Steps 1–4 ship the one-call
 spawn on their own, before any contract work.
 
 ### Make it easy
@@ -277,7 +308,7 @@ spawn on their own, before any contract work.
 ### 1. Extract worktree provisioning from `git_worktree_create`
 
 **Type:** tidy (behavior-preserving)
-**Eases:** steps 2 and 3 (friction: creation and its ledger append live inside the tool)
+**Eases:** steps 2, 3 and 4 (friction: creation and its ledger append live inside the tool)
 **Does:** Move `createWorktree` + `append(record)` + the "from" text out of the
 tool's `execute` (`extensions/pi-git/src/index.ts:876-905`) into one closure
 function, `provision(request, ctx, signal)`, that returns the record. The tool
@@ -289,53 +320,89 @@ is a call to `provision` plus its result text.
 **Ships alone:** yes · **Rollback:** revert the commit
 **Depends on:** — · **Size:** S
 
-### 2. Reuse a branch's live worktree instead of failing
+### 2. Lay out worktrees per main session and branch, and drop `workspace`
 
 **Type:** the change (pi-git behavior)
-**Eases:** step 3, and review or repair agents reaching the same worktree
-**Does:** Before creating, `provision` looks up a ledger record that is not
-`removed` for the same repository and branch (and workspace, when given) whose
-path still exists, and returns it marked `reused`. A `base` that disagrees with
-the record's base is an error naming both. `git_worktree_create` says
-"Reusing worktree …" for a reused one.
+**Eases:** steps 3 and 4 (friction: the model invents and repeats a workspace
+name; nothing groups a session's worktrees)
+**Does:** `worktreePath` (`extensions/pi-git/src/worktrees.ts:61`) becomes
+`<worktreeRoot>/<main session>/<branch slug>/<repo name>`, where the main
+session is the session tree's root (`root()`,
+`packages/pi-session-tree/src/index.ts:208`), so a delegated orchestrator's
+worktrees land in its parent's directory. `git_worktree_create` loses its
+`workspace` parameter; its result names the branch directory as the `cwd` once
+a second repository joins the branch. Records keep `workspacePath`, now set to
+the branch directory, so the existing binding of an agent whose `cwd` is that
+directory (`index.ts:557`) still works. Ledger records written under the old
+layout stay readable, listable and removable; nothing moves them.
+`removeWorktree` prunes an emptied branch and session directory. Update the
+`workspace` lines in `git_worktree_create`'s guidance, pi-git's README layout
+diagram, `skills/execute-roadmap/SKILL.md` §2 and `orchestrate.md`, which name
+the parameter.
+**Done when:** Two repositories created on branch `auth` sit side by side in
+`<root>/<main session>/auth/`; a delegated session's worktree lands under the
+main session's directory; an old-layout record still lists and removes.
+**Verification:** pi-git unit tests for the path, a child session's path, old
+records and directory pruning; `test/scenarios/git-worktree.test.ts` updated;
+`npm run verify:bundle`; `npm run check`.
+**Ships alone:** yes · **Rollback:** revert; new worktrees use the old layout again
+**Depends on:** 1 · **Size:** S
+
+### 3. Reuse a branch's worktree instead of failing
+
+**Type:** the change (pi-git behavior)
+**Eases:** step 4, and review or repair agents reaching the same worktree
+**Does:** The path is now fixed by main session, branch and repository, so
+before creating, `provision` checks for a ledger record at that path that is
+not `removed` and whose directory still exists, and returns it marked
+`reused`. A `base` that disagrees with the record's base is an error naming
+both. `git_worktree_create` says "Reusing worktree …" for a reused one.
 **Done when:** Creating the same branch twice returns the same path and writes
 no second ledger record; a removed or deleted worktree is created afresh.
 **Verification:** pi-git unit tests for reuse, removed and missing records, and
 a disagreeing `base`; `npm run check`.
 **Ships alone:** yes · **Rollback:** revert; the tool fails on a second create again
-**Depends on:** 1 · **Size:** S
+**Depends on:** 2 · **Size:** S
 
-### 3. Provision a worktree from `subagent_start`'s `handoff.worktree`
+### 4. Provision a worktree from `subagent_start`'s `handoff.worktree`
 
 **Type:** contract
-**Eases:** step 12 (no `git_worktree_create` turn, no copied `cwd`)
+**Eases:** step 13 (no `git_worktree_create` turn, no copied `cwd`)
 **Does:** pi-git registers a `tool_call` hook for `subagent_start`. When
-`input.handoff.worktree` is present it validates
-`{ branch, base?, repo?, workspace? }`, calls `provision` (step 2), and sets
-`event.input.cwd` to the worktree (or its workspace directory). A `cwd` that is
-already set and differs blocks the call with both paths; a failed provision
-blocks it with the git error. pi-git's tool guidance documents the key and that
-a later agent naming the same branch lands in the same worktree. The agent is
-bound to the record by the existing `subagent:session:created` handler
-(`index.ts:549`).
+`input.handoff.worktree` is present it validates the shape in Inputs, calls
+`provision` (step 3) once per repository, and sets `event.input.cwd`: the
+worktree for one repository, the branch directory for several. For the
+several-branch form (`worktrees: [...]`) the `cwd` is the main session's
+directory and pi-git appends one line to `event.input.prompt` naming each
+worktree's path and branch, and that each repository's own `AGENTS.md` applies
+there. A `cwd` that is already set and differs blocks the call with both paths;
+a failed provision blocks it with the git error, keeping any worktree it
+already made for reuse. On `subagent:session:created` pi-git binds the agent to
+exactly the worktrees the handoff named (the handoff rides on that event),
+alongside the existing `cwd` binding (`index.ts:549`). pi-git's tool guidance
+documents the key and that a later agent naming the same branch lands in the
+same worktree.
 **Seam or contract:** `handoff.worktree` (see Inputs); relies on Pi's
 documented in-place `event.input` mutation and on `cwd` being resolved inside
 `execute` (`agent-tool.ts:83`).
 **Done when:** One `subagent_start` with `handoff: { todo: { keys: ["a"] },
 worktree: { branch: "a" } }` runs the agent on branch `a` in a new worktree,
 the todo claim binds as before, and a second spawn naming branch `a` runs in
-the same path.
-**Verification:** pi-git unit tests for the hook (valid, invalid, `cwd`
-conflict, provision failure); a new bundle scenario,
+the same path. With `repos: ["api", "web"]` the agent's `cwd` holds exactly
+those two worktrees; with `worktrees: [...]` on two branches its prompt names
+both and pi-git lists the agent on each.
+**Verification:** pi-git unit tests for the hook (one repository, several,
+several branches, invalid, `cwd` conflict, provision failure part way); a new
+bundle scenario,
 `test/scenarios/worktree-handoff.test.ts`, covering create, reuse and the
 pi-todo claim together; `npm run verify:bundle`.
 **Ships alone:** yes · **Rollback:** revert; callers fall back to `git_worktree_create` + `cwd`
-**Depends on:** 2 · **Size:** M
+**Depends on:** 3 · **Size:** M
 
-### 4. Define the task-links contract in a shared package
+### 5. Define the task-links contract in a shared package
 
 **Type:** contract
-**Eases:** steps 6, 7 and 8
+**Eases:** steps 7, 8 and 9
 **Does:** Add a small module (channel name, `TaskLink` type, `announceLink(pi,
 link)`, `readLink(value)` validator with the size caps and `https:`-only URLs)
 to the package that already owns cross-extension session vocabulary. Read
@@ -350,10 +417,10 @@ non-`https:` and unknown-kind links; nothing produces or consumes yet.
 **Ships alone:** yes · **Rollback:** revert
 **Depends on:** — · **Size:** S
 
-### 5. Keep every agent that held a task
+### 6. Keep every agent that held a task
 
 **Type:** tidy (behavior-preserving)
-**Eases:** step 6 (friction: task → agent is dropped on release)
+**Eases:** step 7 (friction: task → agent is dropped on release)
 **Does:** pi-todo derives `holders: Map<taskKey, agentId[]>` from its claim
 journal ops during replay and as claims are made, instead of keeping only the
 last ended claim in memory (`delegation.ts:247`). Nothing shown changes yet.
@@ -364,14 +431,14 @@ still list it.
 **Ships alone:** yes · **Rollback:** revert
 **Depends on:** — · **Size:** S
 
-### 6. Show links on pi-todo's tasks
+### 7. Show links on pi-todo's tasks
 
 **Type:** the change (pi-todo behavior)
-**Eases:** steps 9 and 12; delivers the "rows show agent, worktree, PR" criterion
+**Eases:** steps 10 and 13; delivers the "rows show agent, worktree, PR" criterion
 **Does:** pi-todo listens on the task-links channel and journals each link
 keyed by agent (newest state per `kind` + `id`) with `pi.appendEntry`, so
 announcement order against the claim does not matter. A task's links are the
-links of its holders (step 5), joined at render. Show them: one compact line
+links of its holders (step 6), joined at render. Show them: one compact line
 per task in the widget and `/todo` list (agent state, worktree branch and
 state, `PR #n` and state), full rows with URLs in the task detail
 (`todoTaskDetail`), as structured fields on pi-todo's surface views, and in the
@@ -385,12 +452,12 @@ no producer running.
 Unicode, per the TUI spacing rule); `npm run test:workspace -- pi-todo`;
 regenerate pi-todo's README images with the `tui-screenshot` skill.
 **Ships alone:** yes (renders nothing until a producer announces) · **Rollback:** revert; journaled link entries are ignored
-**Depends on:** 4, 5 · **Size:** M
+**Depends on:** 5, 6 · **Size:** M
 
-### 7. Announce worktree links from pi-git
+### 8. Announce worktree links from pi-git
 
 **Type:** contract (retrofit producer)
-**Eases:** step 12
+**Eases:** step 13
 **Does:** When pi-git binds an agent to a worktree (`index.ts:549`) and whenever
 it re-measures that worktree's status, it announces `{ kind: "worktree", id:
 path, label: branch, state }` for each bound agent.
@@ -399,12 +466,12 @@ its status on its row; the status updates after `/git:refresh`.
 **Verification:** pi-git unit tests; extend `test/scenarios/worktree-handoff.test.ts`
 to assert the link on the task.
 **Ships alone:** yes · **Rollback:** revert
-**Depends on:** 3, 6 · **Size:** S
+**Depends on:** 4, 7 · **Size:** S
 
-### 8. Join pull requests to worktrees and announce PR links
+### 9. Join pull requests to worktrees and announce PR links
 
 **Type:** the change (pi-git behavior)
-**Eases:** steps 11 and 12 (friction: pull requests and worktrees are never joined)
+**Eases:** steps 12 and 13 (friction: pull requests and worktrees are never joined)
 **Does:** A pull request record whose repository and `headRef` match a live
 worktree record is joined to it, including records adopted from a child
 (`index.ts:135`). For each agent bound to that worktree pi-git announces
@@ -417,13 +484,13 @@ record's state changes (checks, review requested, merged, closed).
 match, two worktrees on one branch); extend `test/scenarios/pr-watch.test.ts`
 or the new scenario with a faked `gh`.
 **Ships alone:** yes · **Rollback:** revert
-**Depends on:** 7 · **Size:** M
+**Depends on:** 8 · **Size:** M
 
-### 9. Show task links in bb's Todos card
+### 10. Show task links in bb's Todos card
 
 **Type:** the change (bb plugin)
 **Eases:** the "every renderer" success criterion
-**Does:** The bb plugin's todo rows render step 6's link fields: PR as a link,
+**Does:** The bb plugin's todo rows render step 7's link fields: PR as a link,
 worktree branch and state, agent state, inside bb's 12px inset. The dashboard
 picks them up from the surface view with no change; check it does.
 **Done when:** A task with links shows them in bb and the dashboard.
@@ -431,12 +498,12 @@ picks them up from the surface view with no change; check it does.
 `bb-shot.mjs --expand --check` passes (`bb-screenshot` skill); a dashboard check
 by eye.
 **Ships alone:** yes · **Rollback:** revert
-**Depends on:** 6 · **Size:** S
+**Depends on:** 7 · **Size:** S
 
-### 10. Track which agents are running in each worktree
+### 11. Track which agents are running in each worktree
 
 **Type:** tidy (behavior-preserving)
-**Eases:** step 11 (answer 5: retirement waits for no running agent)
+**Eases:** step 12 (answer 5: retirement waits for no running agent)
 **Does:** pi-git keeps, in its closure, the set of bound agents whose run has
 started and not yet ended (`subagent:session:created` in,
 `subagent:completed` / `subagent:failed` / `subagent:session:disposed` out),
@@ -448,16 +515,16 @@ failure, resume with `subagent_send`, and reload.
 **Ships alone:** yes · **Rollback:** revert
 **Depends on:** — · **Size:** S
 
-### 11. Retire a worktree when its linked pull request merges
+### 12. Retire a worktree when its linked pull request merges
 
 **Type:** the change (pi-git behavior)
-**Eases:** step 12 (no `git_worktree_remove` rule in the skills)
+**Eases:** step 13 (no `git_worktree_remove` rule in the skills)
 **Does:** A new pi-git setting, `retireMergedWorktrees` (default `true`,
 declared with `defineSettings`). When pi-git records that a joined pull
 request merged (a watch, `git_pr_status`, `/git:refresh`), it marks the
 worktree `retire` in its ledger. A worktree marked `retire` is removed with
 `removeWorktree` (branch kept) as soon as no agent bound to it is running
-(step 10) and `atRisk` is clear; it is re-checked when an agent ends and on
+(step 11) and `atRisk` is clear; it is re-checked when an agent ends and on
 `session_start`. Uncommitted or unbranched work keeps it and says why in the
 worktree's state. Each removal writes one hidden `triggerTurn: false` note and
 updates the worktree link to `removed`.
@@ -467,24 +534,25 @@ stays with the reason shown; the setting turns it all off.
 **Verification:** pi-git unit tests for each case and for a reload between
 merge and removal; a bundle scenario for merge → retire with a faked `gh`.
 **Ships alone:** yes · **Rollback:** set `retireMergedWorktrees: false`, or revert
-**Depends on:** 8, 10 · **Size:** M
+**Depends on:** 9, 11 · **Size:** M
 
 ### The change
 
-### 12. Delegate in one call and keep coordination out of task messages
+### 13. Delegate in one call and keep coordination out of task messages
 
 **Type:** the change (agent profiles and skills)
 **Does:**
 
 - `skills/execute-roadmap/SKILL.md`: §2 starts each worker with one
   `subagent_start` carrying `handoff: { todo: { keys: [key] }, worktree: {
-  branch: key, base } }` and sends the reviewer and repair rounds to the same
-  branch. Drop the stage-as-`message` rule and the "record the agent ID / path /
+  branch: key, base } }` (with `repos` for a step that spans repositories) and
+  sends the reviewer and repair rounds to the same branch. Drop the stage-as-`message` rule and the "record the agent ID / path /
   branch / URL" lines: the task's links show them. §5 "After the merge" loses
   `git_worktree_remove`. §7 resume reads the todo note's links instead of
   joining `git_worktree_list`, `git_pr_list` and the roster.
 - `extensions/pi-subagent/agents/orchestrate.md`: the worktree bullet becomes
-  `handoff.worktree`; drop "record each returned agent ID on its todo", "record
+  `handoff.worktree`, with `repos` for several repositories on one branch and
+  `worktrees` only when one worker needs several branches; drop "record each returned agent ID on its todo", "record
   the worktree path and branch", "record its URL on the task"; recovery after
   compaction starts from the todo note.
 - `skills/babysit-pr/SKILL.md` and pi-git's and pi-subagent's tool guidance:
@@ -498,11 +566,11 @@ merged worktree; the execute-roadmap worktree and stage rules are gone.
 scenario that runs one roadmap step through implement → review → PR → merge on
 the scripted model and shows the task row with its links and no stage messages.
 **Ships alone:** yes · **Rollback:** revert the text
-**Depends on:** 3, 8, 11 · **Size:** M
+**Depends on:** 4, 9, 12 · **Size:** M
 
 ### Clean up
 
-### 13. Update the READMEs and the bundle map
+### 14. Update the READMEs and the bundle map
 
 **Type:** cleanup
 **Does:** pi-git's and pi-todo's READMEs show `handoff.worktree`, links on task
@@ -510,15 +578,15 @@ rows and retirement in their At a glance lists; the root README's "Who imports
 what" table and diagrams add the task-links module; regenerate the images whose
 content changed (`docs-images.mjs`).
 **Done when:** No README describes `git_worktree_create` + `cwd` as the way to
-delegate, or omits the new links.
+delegate, names `workspace`, or omits the new links.
 **Verification:** `npm run check`; images regenerated.
 **Ships alone:** yes · **Rollback:** revert
-**Depends on:** 12 · **Size:** S
+**Depends on:** 13 · **Size:** S
 
 ## Open questions
 
 - Home of the task-links module (`pi-foundations` or `pi-session-tree`):
-  settled in step 4 by what each package's README already owns.
+  settled in step 5 by what each package's README already owns.
 - Not verified: that `subagent:session:created` fires again when
-  `subagent_send` reopens an idle agent, which step 10 relies on to see a
-  resumed run as running. Check it at the start of step 10.
+  `subagent_send` reopens an idle agent, which step 11 relies on to see a
+  resumed run as running. Check it at the start of step 11.
