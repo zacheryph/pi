@@ -1,0 +1,516 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "revision",
+    "title",
+    "status",
+    "updated",
+    "disclaimer",
+    "goal",
+    "answers",
+    "inputs",
+    "survey",
+    "options",
+    "decision",
+    "questions",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "chosen",
+        "in_progress",
+        "done"
+      ]
+    },
+    "updated": {
+      "type": "string"
+    },
+    "disclaimer": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "outcome",
+        "consumers",
+        "successCriteria",
+        "nonGoals",
+        "constraints",
+        "openToChange",
+        "offLimits",
+        "appetite"
+      ],
+      "properties": {
+        "request": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "consumers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "successCriteria": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nonGoals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "openToChange": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "offLimits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "appetite": {
+          "type": "string"
+        }
+      }
+    },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "question",
+          "recommended",
+          "answer",
+          "source",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "recommended": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "source",
+          "owner",
+          "supply",
+          "tradeoff"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "supply": {
+            "type": "string"
+          },
+          "tradeoff": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "survey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priorArt",
+        "conventions",
+        "friction",
+        "noticedNotDoing",
+        "notExamined"
+      ],
+      "properties": {
+        "priorArt": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conventions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "friction": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "problem",
+              "evidence",
+              "blocks",
+              "verdict"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "verdict": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "noticedNotDoing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notExamined": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "idea",
+          "cost",
+          "risk",
+          "valueTiming",
+          "makesEasy",
+          "leavesBehind",
+          "chooseWhen"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "idea": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "string"
+          },
+          "risk": {
+            "type": "string"
+          },
+          "valueTiming": {
+            "type": "string"
+          },
+          "makesEasy": {
+            "type": "string"
+          },
+          "leavesBehind": {
+            "type": "string"
+          },
+          "chooseWhen": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "decision": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "optionId",
+            "by",
+            "at",
+            "reason"
+          ],
+          "properties": {
+            "optionId": {
+              "type": "string"
+            },
+            "by": {
+              "type": "string"
+            },
+            "at": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "question",
+          "status",
+          "blocks",
+          "note"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "order",
+          "title",
+          "type",
+          "track",
+          "dependsOn",
+          "eases",
+          "does",
+          "doneWhen",
+          "verification",
+          "rollback",
+          "size",
+          "shipsAlone",
+          "scope",
+          "execution"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,29}$"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "track": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "eases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "does": {
+            "type": "string"
+          },
+          "doneWhen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "verification": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "rollback": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          },
+          "shipsAlone": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "execution": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "stage",
+              "delivery",
+              "evidence",
+              "note"
+            ],
+            "properties": {
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "implementing",
+                  "review",
+                  "checks",
+                  "awaiting_merge",
+                  "verifying",
+                  "done"
+                ]
+              },
+              "delivery": {
+                "type": "string",
+                "enum": [
+                  "local",
+                  "pull_request"
+                ]
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "ref",
+                    "result"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "ref": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "minItems": 1
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Roadmap proof-of-concept v1"
+}
