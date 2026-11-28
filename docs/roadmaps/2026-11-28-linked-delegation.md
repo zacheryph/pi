@@ -40,8 +40,11 @@ findings, blockers and outcomes.
   todo note after compaction carries the same links.
 - The orchestrate profile and execute-roadmap tell the model to write no stage,
   agent ID, worktree path, branch or pull request URL into a task's `message`.
-- A worktree whose linked pull request merged and that holds nothing at risk is
-  removed without a model call; its branch is kept.
+- A worktree whose linked pull requests have all settled, at least one merged,
+  and that holds nothing at risk is removed without a model call; its branch is
+  kept.
+- Every pull request an agent opens shows on its task, including stacked or
+  split pull requests from branches it created inside one worktree.
 - `extensions/pi-subagent/agents/orchestrate.md` and
   `skills/execute-roadmap/SKILL.md` lose their worktree and stage bookkeeping
   rules (today about 25 of execute-roadmap's 316 lines).
@@ -89,6 +92,9 @@ smallest change).
 - Worktrees live at `<worktreeRoot>/<repo>/<branch>`, or
   `<worktreeRoot>/<workspace>/<repo>` when the model names a workspace
   (`extensions/pi-git/src/worktrees.ts:61`).
+- Each pull request record names the subagent whose session first recorded it,
+  `createdBy`, and adopted records keep it
+  (`extensions/pi-git/src/prs.ts:90`).
 - The session tree knows every session's main (root) session
   (`packages/pi-session-tree/src/index.ts:208`).
 - Pi loads `AGENTS.md`/`CLAUDE.md` from a session's `cwd` and its ancestors
@@ -97,14 +103,15 @@ smallest change).
 
 ## Answers
 
-| #   | Question                                                                                                          | Recommended                                                   | Answer                                          | Source                                            | Status   |
-| --- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- | -------- |
-| 1   | Can an extension change a tool call's arguments before it runs?                                                   | —                                                             | Yes: mutate `event.input` in a `tool_call` hook | `pi-coding-agent` `extensions/types.d.ts:1110`    | resolved |
-| 2   | Does anything join a pull request to the worktree it came from?                                                   | —                                                             | No; both sides hold the branch                  | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27` | resolved |
-| 3   | Is task → agent kept after the agent ends?                                                                        | —                                                             | Only in memory and in claim journal ops         | `pi-todo/src/delegation.ts:247`                   | resolved |
-| 4   | Retire merged worktrees by default, or behind an opt-in setting?                                                  | Default on                                                    | Default on                                      | user                                              | resolved |
-| 5   | Retire a merged worktree while a kept (resumable) agent is in it?                                                 | Yes, if clean                                                 | Wait for no running agent                       | user                                              | resolved |
-| 6   | Replace `workspace` with one directory per main session, and give a multi-worktree agent that directory as `cwd`? | Per session, grouped by branch: `cwd` is the branch directory | Go with grouping by branch                      | user                                              | resolved |
+| #   | Question                                                                                                          | Recommended                                                                                                                                               | Answer                                          | Source                                            | Status   |
+| --- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- | -------- |
+| 1   | Can an extension change a tool call's arguments before it runs?                                                   | —                                                                                                                                                         | Yes: mutate `event.input` in a `tool_call` hook | `pi-coding-agent` `extensions/types.d.ts:1110`    | resolved |
+| 2   | Does anything join a pull request to the worktree it came from?                                                   | —                                                                                                                                                         | No; both sides hold the branch                  | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27` | resolved |
+| 3   | Is task → agent kept after the agent ends?                                                                        | —                                                                                                                                                         | Only in memory and in claim journal ops         | `pi-todo/src/delegation.ts:247`                   | resolved |
+| 4   | Retire merged worktrees by default, or behind an opt-in setting?                                                  | Default on                                                                                                                                                | Default on                                      | user                                              | resolved |
+| 5   | Retire a merged worktree while a kept (resumable) agent is in it?                                                 | Yes, if clean                                                                                                                                             | Wait for no running agent                       | user                                              | resolved |
+| 6   | Replace `workspace` with one directory per main session, and give a multi-worktree agent that directory as `cwd`? | Per session, grouped by branch: `cwd` is the branch directory                                                                                             | Go with grouping by branch                      | user                                              | resolved |
+| 7   | An agent with several branches or pull requests in one repository?                                                | Separate worktrees only when it needs them at once; link pull requests by the agent that opened them; retire a worktree once all its pull requests settle | Yes                                             | user                                              | resolved |
 
 ## Inputs
 
@@ -183,20 +190,21 @@ actions through `pi-surface`; the bb plugin's per-view tables follow the
 
 **Friction:**
 
-| Friction                                                                               | Evidence (`file:line`)                                                                 | Blocks                                        | Fix cost | Verdict                                                                                                                                       |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Worktree creation and its ledger append live inside the tool's `execute`               | `pi-git/src/index.ts:876-905`                                                          | Provisioning from a hook                      | S        | Fix first: extract one `provision` used by both                                                                                               |
-| Creating a branch that already has a worktree fails instead of reusing it              | `pi-git/src/worktrees.ts:79-94`                                                        | Review and repair agents in the same worktree | S        | Fix first: reuse the worktree at the branch's path                                                                                            |
-| The model invents and repeats a `workspace` name to group repositories                 | `pi-git/src/worktrees.ts:61`, `pi-git/src/index.ts:869`                                | One-call multi-repository spawns              | S        | Fix first: derive the layout from main session and branch                                                                                     |
-| pi-git binds agents by `cwd`, so a `cwd` above several worktrees binds none            | `pi-git/src/index.ts:555-558`                                                          | Links for the several-branch case             | S        | Fix first: bind the worktrees the handoff names                                                                                               |
-| A `cwd` above the repositories loads none of their `AGENTS.md`                         | `pi-coding-agent` `core/resource-loader.js:184`                                        | Repository rules in multi-repository agents   | —        | Work around: one repository gets its worktree as `cwd`; the prompt points a multi-repository agent at each repository's `AGENTS.md`, as today |
-| Pull requests and worktrees are never joined                                           | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27`                                      | PR links, retirement                          | S        | Fix first                                                                                                                                     |
-| Task → agent is lost when a claim is released                                          | `pi-todo/src/delegation.ts:247`, `:283`                                                | Links for tasks whose agent ended             | S–M      | Fix first: keep holders per task, replayed from claim ops                                                                                     |
-| No contract for one extension to annotate another's records                            | — (missing seam)                                                                       | Links on task rows                            | M        | Fix first (the contract above)                                                                                                                |
-| The skills use task messages as a scratchpad for stage, agent ID, path, branch and URL | `skills/execute-roadmap/SKILL.md` §1–2, §5; `orchestrate.md` "Delegate and coordinate" | The noise the change removes                  | M        | Fix as the change itself                                                                                                                      |
-| Retirement relies on the model calling `git_worktree_remove`                           | `skills/execute-roadmap/SKILL.md` "After the merge" 1                                  | Retirement                                    | S        | Fix first (pi-git acts on merged)                                                                                                             |
-| pi-git does not know whether an agent bound to a worktree is still running             | `pi-git/src/index.ts:549` records ids only                                             | Safe retirement                               | S        | Work around: retire only when `atRisk` is clear; see answer 5                                                                                 |
-| If pi-todo blocks a spawn after pi-git created its worktree, the worktree stays        | `tool_call` handler order is load order                                                | Clean failure                                 | —        | Work around: reuse by branch makes the next try pick it up                                                                                    |
+| Friction                                                                                              | Evidence (`file:line`)                                                                 | Blocks                                        | Fix cost | Verdict                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Worktree creation and its ledger append live inside the tool's `execute`                              | `pi-git/src/index.ts:876-905`                                                          | Provisioning from a hook                      | S        | Fix first: extract one `provision` used by both                                                                                               |
+| Creating a branch that already has a worktree fails instead of reusing it                             | `pi-git/src/worktrees.ts:79-94`                                                        | Review and repair agents in the same worktree | S        | Fix first: reuse the worktree at the branch's path                                                                                            |
+| The model invents and repeats a `workspace` name to group repositories                                | `pi-git/src/worktrees.ts:61`, `pi-git/src/index.ts:869`                                | One-call multi-repository spawns              | S        | Fix first: derive the layout from main session and branch                                                                                     |
+| pi-git binds agents by `cwd`, so a `cwd` above several worktrees binds none                           | `pi-git/src/index.ts:555-558`                                                          | Links for the several-branch case             | S        | Fix first: bind the worktrees the handoff names                                                                                               |
+| A `cwd` above the repositories loads none of their `AGENTS.md`                                        | `pi-coding-agent` `core/resource-loader.js:184`                                        | Repository rules in multi-repository agents   | —        | Work around: one repository gets its worktree as `cwd`; the prompt points a multi-repository agent at each repository's `AGENTS.md`, as today |
+| A pull request from a branch that is not a worktree's own (stacked or split work) matches no worktree | `pi-git/src/ledger.ts:27` holds one branch per worktree                                | PR links, safe retirement                     | S        | Fix first: also link by `createdBy` (`prs.ts:90`)                                                                                             |
+| Pull requests and worktrees are never joined                                                          | `pi-git/src/prs.ts:43`, `pi-git/src/ledger.ts:27`                                      | PR links, retirement                          | S        | Fix first                                                                                                                                     |
+| Task → agent is lost when a claim is released                                                         | `pi-todo/src/delegation.ts:247`, `:283`                                                | Links for tasks whose agent ended             | S–M      | Fix first: keep holders per task, replayed from claim ops                                                                                     |
+| No contract for one extension to annotate another's records                                           | — (missing seam)                                                                       | Links on task rows                            | M        | Fix first (the contract above)                                                                                                                |
+| The skills use task messages as a scratchpad for stage, agent ID, path, branch and URL                | `skills/execute-roadmap/SKILL.md` §1–2, §5; `orchestrate.md` "Delegate and coordinate" | The noise the change removes                  | M        | Fix as the change itself                                                                                                                      |
+| Retirement relies on the model calling `git_worktree_remove`                                          | `skills/execute-roadmap/SKILL.md` "After the merge" 1                                  | Retirement                                    | S        | Fix first (pi-git acts on merged)                                                                                                             |
+| pi-git does not know whether an agent bound to a worktree is still running                            | `pi-git/src/index.ts:549` records ids only                                             | Safe retirement                               | S        | Work around: retire only when `atRisk` is clear; see answer 5                                                                                 |
+| If pi-todo blocks a spawn after pi-git created its worktree, the worktree stays                       | `tool_call` handler order is load order                                                | Clean failure                                 | —        | Work around: reuse by branch makes the next try pick it up                                                                                    |
 
 **Noticed, not doing:** A delegated orchestrator cannot hand tasks on
 (`pi-todo/src/delegation.ts:370`). `git_worktree_create` could accept a task
@@ -381,7 +389,12 @@ already made for reuse. On `subagent:session:created` pi-git binds the agent to
 exactly the worktrees the handoff named (the handoff rides on that event),
 alongside the existing `cwd` binding (`index.ts:549`). pi-git's tool guidance
 documents the key and that a later agent naming the same branch lands in the
-same worktree.
+same worktree. It says to give each branch its own agent by default, and to
+hand one agent several worktrees (`worktrees: [...]`, also several branches of
+one repository) only when it must have them checked out at once, such as
+porting a change between branches; an agent that works on branches one after
+another (stacked or split pull requests) needs one worktree and creates the
+branches there.
 **Seam or contract:** `handoff.worktree` (see Inputs); relies on Pi's
 documented in-place `event.input` mutation and on `cwd` being resolved inside
 `execute` (`agent-tool.ts:83`).
@@ -389,8 +402,8 @@ documented in-place `event.input` mutation and on `cwd` being resolved inside
 worktree: { branch: "a" } }` runs the agent on branch `a` in a new worktree,
 the todo claim binds as before, and a second spawn naming branch `a` runs in
 the same path. With `repos: ["api", "web"]` the agent's `cwd` holds exactly
-those two worktrees; with `worktrees: [...]` on two branches its prompt names
-both and pi-git lists the agent on each.
+those two worktrees; with `worktrees: [...]` on two branches, of one repository or two, its prompt
+names both and pi-git lists the agent on each.
 **Verification:** pi-git unit tests for the hook (one repository, several,
 several branches, invalid, `cwd` conflict, provision failure part way); a new
 bundle scenario,
@@ -471,18 +484,29 @@ to assert the link on the task.
 ### 9. Join pull requests to worktrees and announce PR links
 
 **Type:** the change (pi-git behavior)
-**Eases:** steps 12 and 13 (friction: pull requests and worktrees are never joined)
-**Does:** A pull request record whose repository and `headRef` match a live
-worktree record is joined to it, including records adopted from a child
-(`index.ts:135`). For each agent bound to that worktree pi-git announces
-`{ kind: "pr", id: key, label: "PR #n", url, state }`, and again whenever the
-record's state changes (checks, review requested, merged, closed).
-`git_worktree_list` and the `/git:worktrees` view show the joined pull request.
+**Eases:** steps 12 and 13 (friction: pull requests and worktrees are never
+joined; a pull request from a branch that is not a worktree's own matches none)
+**Does:** Each pull request record, own or adopted from a child
+(`index.ts:135`), is joined to worktrees in its repository:
+
+- the worktree whose branch is its `headRef`, when there is one;
+- otherwise every worktree of that repository bound to its `createdBy` agent
+  (`prs.ts:90`), which covers stacked or split pull requests an agent opens
+  from branches it made inside its worktree.
+
+pi-git announces `{ kind: "pr", id: key, label: "PR #n", url, state }` for its
+`createdBy` agent and for each agent bound to a joined worktree, and again
+whenever the record's state changes (checks, review requested, merged, closed).
+`git_worktree_list` and the `/git:worktrees` view show each worktree's joined
+pull requests.
 **Done when:** A worker that opens a pull request from its worktree makes
-`PR #n` appear on its task with the current check state, and `Merged` once merged.
-**Verification:** pi-git unit tests for the join (own and adopted records, no
-match, two worktrees on one branch); extend `test/scenarios/pr-watch.test.ts`
-or the new scenario with a faked `gh`.
+`PR #n` appear on its task with the current check state, and `Merged` once
+merged; a second pull request it opens from another branch in the same
+worktree appears too and is joined to that worktree.
+**Verification:** pi-git unit tests for the join (own and adopted records,
+`headRef` match, `createdBy` fallback, an agent bound to two worktrees of one
+repository, no match); extend `test/scenarios/pr-watch.test.ts` or the new
+scenario with a faked `gh`.
 **Ships alone:** yes · **Rollback:** revert
 **Depends on:** 8 · **Size:** M
 
@@ -515,24 +539,28 @@ failure, resume with `subagent_send`, and reload.
 **Ships alone:** yes · **Rollback:** revert
 **Depends on:** — · **Size:** S
 
-### 12. Retire a worktree when its linked pull request merges
+### 12. Retire a worktree once its linked pull requests have merged
 
 **Type:** the change (pi-git behavior)
 **Eases:** step 13 (no `git_worktree_remove` rule in the skills)
 **Does:** A new pi-git setting, `retireMergedWorktrees` (default `true`,
 declared with `defineSettings`). When pi-git records that a joined pull
-request merged (a watch, `git_pr_status`, `/git:refresh`), it marks the
-worktree `retire` in its ledger. A worktree marked `retire` is removed with
+request merged or closed (a watch, `git_pr_status`, `/git:refresh`), it checks
+the worktree's joined pull requests (step 9): once every one is merged or
+closed and at least one merged, it marks the worktree `retire` in its ledger.
+A pull request joined later clears the mark. A worktree marked `retire` is removed with
 `removeWorktree` (branch kept) as soon as no agent bound to it is running
 (step 11) and `atRisk` is clear; it is re-checked when an agent ends and on
 `session_start`. Uncommitted or unbranched work keeps it and says why in the
 worktree's state. Each removal writes one hidden `triggerTurn: false` note and
 updates the worktree link to `removed`.
 **Done when:** A merged, clean worktree with no running agent is gone without a
-model call; one with a running agent goes when that agent ends; a dirty one
-stays with the reason shown; the setting turns it all off.
-**Verification:** pi-git unit tests for each case and for a reload between
-merge and removal; a bundle scenario for merge → retire with a faked `gh`.
+model call; one with a running agent goes when that agent ends; one with a
+second pull request still open stays until that one settles; a dirty one stays
+with the reason shown; the setting turns it all off.
+**Verification:** pi-git unit tests for each case (one pull request, a stack
+of two merging in turn, one merged and one closed, all closed) and for a reload
+between merge and removal; a bundle scenario for merge → retire with a faked `gh`.
 **Ships alone:** yes · **Rollback:** set `retireMergedWorktrees: false`, or revert
 **Depends on:** 9, 11 · **Size:** M
 
@@ -557,6 +585,9 @@ merge and removal; a bundle scenario for merge → retire with a faked `gh`.
   compaction starts from the todo note.
 - `skills/babysit-pr/SKILL.md` and pi-git's and pi-subagent's tool guidance:
   name `handoff.worktree` where they name `git_worktree_create` + `cwd`.
+- Both say: one agent per branch by default; several worktrees for one agent
+  only when it needs them checked out at once; stacked or split pull requests
+  from one agent come from one worktree, and each still shows on the task.
 - `message` stays for findings, blockers and outcomes, and says so.
 
 **Done when:** Neither profile nor skill tells the model to write a stage,
